@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish (for example v0.1.1)"
+        required: true
+        default: "v0.1.1"
+      target_ref:
+        description: "Branch, tag, or commit to build from"
+        required: true
+        default: "main"
+      release_name:
+        description: "Optional release title"
+        required: false
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.release_tag }}"
+            ref="${{ inputs.target_ref }}"
+            name="${{ inputs.release_name }}"
+          else
+            tag="${{ github.ref_name }}"
+            ref="${{ github.sha }}"
+            name=""
+          fi
+
+          if [[ -z "$tag" ]]; then
+            echo "release tag is required" >&2
+            exit 1
+          fi
+
+          if [[ -z "$name" ]]; then
+            name="${tag#v}"
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build Windows installer
+        run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ steps.meta.outputs.ref }}
+          name: ${{ steps.meta.outputs.name }}
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
