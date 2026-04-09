@@ -157,6 +157,10 @@ export class SpreadsheetService {
     return `${worksheet.name}!${actualStartCell}부터 ${rows.length}행 표를 기록했습니다.`
   }
 
+  async writeRange(range: string, rows: string[][], sheetName?: string) {
+    return this.writeTable(rows, range, sheetName)
+  }
+
   async appendRows(rows: string[][], sheetName?: string) {
     if (this.activeMode === "live") {
       const result = await this.liveService.appendRows(rows, sheetName)
@@ -345,6 +349,10 @@ function normalizeRangeAddress(range: string) {
 }
 
 function normalizeTableAnchor(startCell: string) {
+  if (isWholeSheetRange(startCell)) {
+    return "A1"
+  }
+
   const normalized = normalizeRangeAddress(startCell)
   return normalized.split(":")[0] ?? normalized
 }

@@ -2,6 +2,7 @@ import type { ChatAttachment, SheetPreview, WorkbookSummary } from "@shared/type
 
 export type SpreadsheetAgentActionType =
   | "read_range"
+  | "write_range"
   | "write_cell"
   | "delete_cell"
   | "write_table"

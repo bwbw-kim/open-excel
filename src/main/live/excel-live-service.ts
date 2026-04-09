@@ -50,6 +50,10 @@ export class ExcelLiveService {
     })
   }
 
+  async writeRange(rows: string[][], range: string, sheetName?: string): Promise<LiveWriteTableResult> {
+    return this.writeTable(rows, range, sheetName)
+  }
+
   async appendRows(rows: string[][], sheetName?: string): Promise<LiveWriteTableResult> {
     return this.run<LiveWriteTableResult>({ action: "append_rows", rows, sheetName })
   }
@@ -147,6 +151,10 @@ function bufferToUtf8(value: Buffer | string | undefined) {
 }
 
 function normalizeTableAnchor(startCell: string) {
+  if (isWholeSheetRange(startCell)) {
+    return "A1"
+  }
+
   const normalized = normalizeRangeAddress(startCell)
   return normalized.split(":")[0] ?? normalized
 }

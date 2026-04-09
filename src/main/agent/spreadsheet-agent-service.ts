@@ -168,6 +168,11 @@ export class SpreadsheetAgentService {
           generatedAttachment: attachment,
         }
       }
+      case "write_range": {
+        const range = requireString(action.range, "range")
+        const rows = resolveRows(action, toolContext)
+        return { resultText: await this.spreadsheetService.writeRange(range, rows, action.sheetName) }
+      }
       case "append_rows": {
         const rows = requireRows(action.rows)
         return { resultText: await this.spreadsheetService.appendRows(rows, action.sheetName) }
@@ -234,7 +239,7 @@ function resolveRows(action: SpreadsheetAgentAction, toolContext: ToolExecutionC
     }
     return toolContext.lastWebSearchTable.rows
   }
-  throw new Error("write_table에는 rows 또는 source가 필요합니다.")
+  throw new Error("write_table/write_range에는 rows 또는 source가 필요합니다.")
 }
 
 function shouldPreReadBeforeMutation(action: SpreadsheetAgentAction, toolContext: ToolExecutionContext) {
@@ -242,5 +247,5 @@ function shouldPreReadBeforeMutation(action: SpreadsheetAgentAction, toolContext
     return false
   }
 
-  return ["write_cell", "delete_cell", "write_table", "append_rows", "delete_row", "create_sheet"].includes(action.action)
+  return ["write_cell", "delete_cell", "write_table", "write_range", "append_rows", "delete_row", "create_sheet"].includes(action.action)
 }
