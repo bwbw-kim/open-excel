@@ -42,7 +42,12 @@ export class ExcelLiveService {
   }
 
   async writeTable(rows: string[][], startCell?: string, sheetName?: string): Promise<LiveWriteTableResult> {
-    return this.run<LiveWriteTableResult>({ action: "write_table", rows, startCell, sheetName })
+    return this.run<LiveWriteTableResult>({
+      action: "write_table",
+      rows,
+      startCell: startCell?.trim() ? normalizeTableAnchor(startCell) : undefined,
+      sheetName,
+    })
   }
 
   async appendRows(rows: string[][], sheetName?: string): Promise<LiveWriteTableResult> {
@@ -55,6 +60,10 @@ export class ExcelLiveService {
   }
 
   async readRange(range: string, sheetName?: string): Promise<{ workbook: WorkbookSummary; attachment: ChatAttachment }> {
+    if (isWholeSheetRange(range)) {
+      return this.readUsedRange(sheetName)
+    }
+
     const result = await this.run<LiveReadRangeResult>({ action: "read_range", range, sheetName })
     return {
       workbook: result.workbook,
@@ -135,6 +144,27 @@ function cleanPowerShellError(raw: string) {
 function bufferToUtf8(value: Buffer | string | undefined) {
   if (!value) return ""
   return typeof value === "string" ? value : value.toString("utf8")
+}
+
+function normalizeTableAnchor(startCell: string) {
+  const normalized = normalizeRangeAddress(startCell)
+  return normalized.split(":")[0] ?? normalized
+}
+
+function normalizeRangeAddress(range: string) {
+  return range
+    .trim()
+    .replace(/[()\[\]]/g, "")
+    .replace(/\$/g, "")
+    .replace(/\s+/g, "")
+    .replace(/^([^!:]+)!([A-Za-z]+\d+:[A-Za-z]+\d+)$/i, "$2")
+    .replace(/^([^!:]+)!([A-Za-z]+\d+)$/i, "$2")
+    .toUpperCase()
+}
+
+function isWholeSheetRange(range: string) {
+  const normalized = range.trim().toLowerCase().replace(/\s+/g, "")
+  return ["전체", "전체범위", "all", "allsheet", "wholesheet", "usedrange", "currentsheet"].includes(normalized)
 }
 
 function buildPowerShellScript(payloadBase64: string) {

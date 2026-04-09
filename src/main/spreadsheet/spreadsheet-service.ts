@@ -144,7 +144,7 @@ export class SpreadsheetService {
     }
 
     const worksheet = this.getWorksheet(sheetName)
-    const actualStartCell = startCell?.trim() ? startCell : findDefaultWriteCell(worksheet)
+    const actualStartCell = startCell?.trim() ? normalizeTableAnchor(startCell) : findDefaultWriteCell(worksheet)
     const { row, col } = decodeCellAddress(actualStartCell)
 
     rows.forEach((rowValues, rowOffset) => {
@@ -188,6 +188,10 @@ export class SpreadsheetService {
       const result = await this.liveService.readRange(range, sheetName)
       this.activeLiveWorkbook = result.workbook
       return result.attachment
+    }
+
+    if (isWholeSheetRange(range)) {
+      return this.readUsedRange(sheetName)
     }
 
     const worksheet = this.getWorksheet(sheetName)
@@ -338,6 +342,16 @@ function normalizeRangeAddress(range: string) {
     .replace(/^([^!:]+)!([A-Za-z]+\d+:[A-Za-z]+\d+)$/i, "$2")
     .replace(/^([^!:]+)!([A-Za-z]+\d+)$/i, "$2")
     .toUpperCase()
+}
+
+function normalizeTableAnchor(startCell: string) {
+  const normalized = normalizeRangeAddress(startCell)
+  return normalized.split(":")[0] ?? normalized
+}
+
+function isWholeSheetRange(range: string) {
+  const normalized = range.trim().toLowerCase().replace(/\s+/g, "")
+  return ["전체", "전체범위", "all", "allsheet", "wholesheet", "usedrange", "currentsheet"].includes(normalized)
 }
 
 function columnNameToNumber(columnName: string) {
