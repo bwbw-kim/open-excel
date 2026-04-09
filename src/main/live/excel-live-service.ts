@@ -51,6 +51,7 @@ export class ExcelLiveService {
   }
 
   async writeRange(rows: string[][], range: string, sheetName?: string): Promise<LiveWriteTableResult> {
+    validateRangeCanFitRows(range, rows)
     return this.writeTable(rows, range, sheetName)
   }
 
@@ -100,10 +101,10 @@ export class ExcelLiveService {
     const script = buildPowerShellScript(payloadBase64)
     const encodedCommand = Buffer.from(script, "utf16le").toString("base64")
 
-    this.logger.info("running excel live command", { action: payload.action })
+    this.logger.info("running excel live command", { action: payload.action, range: payload.range ?? "none" })
 
-    let stdout = ""
-    let stderr = ""
+    let stdoutBuffer = Buffer.alloc(0)
+    let stderrBuffer = Buffer.alloc(0)
 
     try {
       const result = await execFileAsync("powershell.exe", [
@@ -114,22 +115,29 @@ export class ExcelLiveService {
         "-EncodedCommand",
         encodedCommand,
       ], { encoding: "buffer" })
-      stdout = result.stdout.toString("utf8")
-      stderr = result.stderr.toString("utf8")
+      stdoutBuffer = Buffer.from(result.stdout)
+      stderrBuffer = Buffer.from(result.stderr)
     } catch (error) {
       const execError = error as NodeJS.ErrnoException & { stdout?: Buffer | string; stderr?: Buffer | string }
-      const stderrText = bufferToUtf8(execError.stderr)
-      const stdoutText = bufferToUtf8(execError.stdout)
+      const stderrText = decodeProcessText(execError.stderr)
+      const stdoutText = decodeProcessText(execError.stdout)
       const errorText = cleanPowerShellError(stderrText.trim() || stdoutText.trim() || execError.message)
       throw new Error(`Excel 연결에 실패했습니다. ${errorText}`)
     }
 
+    const stdout = decodeProcessText(stdoutBuffer)
+    const stderr = decodeProcessText(stderrBuffer)
+
     if (stderr.trim()) {
-      this.logger.info("excel live stderr", stderr)
+      // stderr에 DEBUG 로그가 포함되어 있으면 JSON 형식인지 확인
+      const hasJson = stdout.trim().startsWith("{") || stdout.trim().startsWith("[")
+      if (!hasJson) {
+        this.logger.info("excel live stderr", { stderr: stderr.slice(0, 1000) })
+      }
     }
 
     try {
-      return JSON.parse(stdout.trim()) as T
+      return JSON.parse(decodeBase64Json(stdoutBuffer)) as T
     } catch {
       throw new Error(`Excel 응답을 해석하지 못했습니다. ${stdout.trim() || "응답 없음"}`)
     }
@@ -145,9 +153,54 @@ function cleanPowerShellError(raw: string) {
     .trim()
 }
 
-function bufferToUtf8(value: Buffer | string | undefined) {
+function decodeBase64Json(value: Buffer | string | undefined) {
+  if (!value) {
+    return ""
+  }
+
+  const base64Text = decodeProcessText(value).trim()
+  if (!base64Text) {
+    return ""
+  }
+
+  return Buffer.from(base64Text, "base64").toString("utf8")
+}
+
+function decodeProcessText(value: Buffer | string | undefined) {
   if (!value) return ""
-  return typeof value === "string" ? value : value.toString("utf8")
+  if (typeof value === "string") {
+    return value
+  }
+
+  const buffer = Buffer.from(value)
+  if (buffer.length === 0) {
+    return ""
+  }
+
+  const utf8 = tryDecode(buffer, "utf-8")
+  if (utf8 != null) {
+    return utf8
+  }
+
+  const utf16le = tryDecode(buffer, "utf-16le")
+  if (utf16le != null) {
+    return utf16le
+  }
+
+  const eucKr = tryDecode(buffer, "euc-kr")
+  if (eucKr != null) {
+    return eucKr
+  }
+
+  return buffer.toString("utf8")
+}
+
+function tryDecode(buffer: Buffer, encoding: "utf-8" | "utf-16le" | "euc-kr") {
+  try {
+    return new TextDecoder(encoding, { fatal: true }).decode(buffer)
+  } catch {
+    return undefined
+  }
 }
 
 function normalizeTableAnchor(startCell: string) {
@@ -170,9 +223,45 @@ function normalizeRangeAddress(range: string) {
     .toUpperCase()
 }
 
+function decodeCellAddress(address: string) {
+  const normalized = normalizeRangeAddress(address)
+  const match = normalized.match(/^([A-Z]+)(\d+)$/)
+  if (!match) {
+    throw new Error(`유효하지 않은 셀 주소입니다: ${address}`)
+  }
+
+  return {
+    Row: Number(match[2]),
+    Col: columnNameToNumber(match[1]),
+  }
+}
+
 function isWholeSheetRange(range: string) {
   const normalized = range.trim().toLowerCase().replace(/\s+/g, "")
   return ["전체", "전체범위", "all", "allsheet", "wholesheet", "usedrange", "currentsheet"].includes(normalized)
+}
+
+function validateRangeCanFitRows(range: string, rows: string[][]) {
+  if (isWholeSheetRange(range)) {
+    return
+  }
+
+  const normalizedRange = normalizeRangeAddress(range)
+  const [startRaw, endRaw] = normalizedRange.split(":")
+  if (!endRaw) {
+    return
+  }
+
+  const start = decodeCellAddress(startRaw)
+  const end = decodeCellAddress(endRaw)
+  const maxRows = end.Row - start.Row + 1
+  const maxColumns = end.Col - start.Col + 1
+  const rowCount = rows.length
+  const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0)
+
+  if (rowCount > maxRows || columnCount > maxColumns) {
+    throw new Error(`${range} 범위(${maxRows}x${maxColumns})에 ${rowCount}x${columnCount} 데이터를 모두 쓸 수 없습니다.`)
+  }
 }
 
 function normalizeLiveRows(value: unknown): string[][] {
@@ -194,6 +283,10 @@ function normalizeLiveRows(value: unknown): string[][] {
 function stringifyLiveCell(value: unknown) {
   if (value == null) return ""
   return String(value)
+}
+
+function columnNameToNumber(columnName: string) {
+  return columnName.split("").reduce((sum, character) => sum * 26 + character.charCodeAt(0) - 64, 0)
 }
 
 function buildPowerShellScript(payloadBase64: string) {
@@ -461,19 +554,29 @@ switch ([string]$payload.action) {
     $result = Get-WorkbookInfo $excel $context.workbook
   }
   'read_range' {
-    $context = Get-WorkbookAndSheet $excel $payload.sheetName
-    $normalizedRange = [string]$payload.range
-    $range = $(if ([string]::IsNullOrWhiteSpace($normalizedRange)) { Get-SafeUsedRange $context.sheet } else { $context.sheet.Range((Normalize-RangeAddress($normalizedRange))) })
-    $info = Get-WorkbookInfo $excel $context.workbook
-    $info.rows = ToRows($range.Value2)
-    $info.title = ([string]$context.sheet.Name) + '!' + (Get-RangeAddress $range)
-    $result = $info
+    try {
+      $context = Get-WorkbookAndSheet $excel $payload.sheetName
+      $normalizedRange = [string]$payload.range
+      if ([string]::IsNullOrWhiteSpace($normalizedRange)) {
+        $range = Get-SafeUsedRange $context.sheet
+      } else {
+        $normalized = Normalize-RangeAddress($normalizedRange)
+        $range = $context.sheet.Range($normalized)
+      }
+      $info = Get-WorkbookInfo $excel $context.workbook
+      $info.rows = ToRows($range.Value2)
+      $info.title = ([string]$context.sheet.Name) + '!' + (Get-RangeAddress $range)
+      $result = $info
+    } catch {
+      throw "read_range failed: $($_.Exception.Message)"
+    }
   }
   default {
     throw "지원하지 않는 live action입니다: $($payload.action)"
   }
 }
 
-$result | ConvertTo-Json -Depth 20 -Compress
+$resultJson = $result | ConvertTo-Json -Depth 20 -Compress
+[Console]::Write([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($resultJson)))
 `
 }

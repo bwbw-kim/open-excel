@@ -158,6 +158,7 @@ export class SpreadsheetService {
   }
 
   async writeRange(range: string, rows: string[][], sheetName?: string) {
+    validateRangeCanFitRows(range, rows)
     return this.writeTable(rows, range, sheetName)
   }
 
@@ -360,6 +361,29 @@ function normalizeTableAnchor(startCell: string) {
 function isWholeSheetRange(range: string) {
   const normalized = range.trim().toLowerCase().replace(/\s+/g, "")
   return ["전체", "전체범위", "all", "allsheet", "wholesheet", "usedrange", "currentsheet"].includes(normalized)
+}
+
+function validateRangeCanFitRows(range: string, rows: string[][]) {
+  if (isWholeSheetRange(range)) {
+    return
+  }
+
+  const normalizedRange = normalizeRangeAddress(range)
+  const [startRaw, endRaw] = normalizedRange.split(":")
+  if (!endRaw) {
+    return
+  }
+
+  const start = decodeCellAddress(startRaw)
+  const end = decodeCellAddress(endRaw)
+  const maxRows = end.row - start.row + 1
+  const maxColumns = end.col - start.col + 1
+  const rowCount = rows.length
+  const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0)
+
+  if (rowCount > maxRows || columnCount > maxColumns) {
+    throw new Error(`${range} 범위(${maxRows}x${maxColumns})에 ${rowCount}x${columnCount} 데이터를 모두 쓸 수 없습니다.`)
+  }
 }
 
 function columnNameToNumber(columnName: string) {

@@ -161,19 +161,6 @@ export class SpreadsheetAgentService {
 
   private async executeAction(action: SpreadsheetAgentAction, toolContext: ToolExecutionContext) {
     switch (action.action) {
-      case "create_sheet": {
-        const sheetName = requireString(action.sheetName, "sheetName")
-        return { resultText: await this.spreadsheetService.createSheet(sheetName) }
-      }
-      case "write_cell": {
-        const cell = requireString(action.cell, "cell")
-        const value = requireString(action.value, "value")
-        return { resultText: await this.spreadsheetService.writeCell(cell, value, action.sheetName) }
-      }
-      case "delete_cell": {
-        const cell = requireString(action.cell, "cell")
-        return { resultText: await this.spreadsheetService.deleteCell(cell, action.sheetName) }
-      }
       case "read_range": {
         const attachment = action.range?.trim()
           ? await this.spreadsheetService.readRange(action.range, action.sheetName)
@@ -187,31 +174,6 @@ export class SpreadsheetAgentService {
         const range = requireString(action.range, "range")
         const rows = resolveRows(action, toolContext)
         return { resultText: await this.spreadsheetService.writeRange(range, rows, action.sheetName) }
-      }
-      case "append_rows": {
-        const rows = requireRows(action.rows)
-        return { resultText: await this.spreadsheetService.appendRows(rows, action.sheetName) }
-      }
-      case "delete_row": {
-        const rowNumber = requireRowNumber(action.rowNumber)
-        return { resultText: await this.spreadsheetService.deleteRow(rowNumber, action.sheetName) }
-      }
-      case "write_table": {
-        const rows = resolveRows(action, toolContext)
-        return { resultText: await this.spreadsheetService.writeTable(rows, action.cell, action.sheetName) }
-      }
-      case "web_search": {
-        const query = requireString(action.query, "query")
-        const results = await this.webSearchService.search(query)
-        const attachment: ChatAttachment = {
-          kind: "table",
-          title: `Web search: ${query}`,
-          rows: [["Title", "URL", "Snippet"], ...results.map((item) => [item.title, item.url, item.snippet])],
-        }
-        return {
-          resultText: `${results.length}개의 웹 검색 결과를 수집했습니다.`,
-          generatedAttachment: attachment,
-        }
       }
       default:
         throw new Error(`지원하지 않는 액션입니다: ${String(action.action)}`)
@@ -258,11 +220,8 @@ function resolveRows(action: SpreadsheetAgentAction, toolContext: ToolExecutionC
 }
 
 function shouldPreReadBeforeMutation(action: SpreadsheetAgentAction, toolContext: ToolExecutionContext) {
-  if (toolContext.lastReadRangeTable) {
-    return false
-  }
-
-  return ["write_cell", "delete_cell", "write_table", "write_range", "append_rows", "delete_row", "create_sheet"].includes(action.action)
+  // read_range, write_range만 있으므로 사전 읽기 불필요
+  return false
 }
 
 function isRedundantReadAction(action: SpreadsheetAgentAction, lastReadRangeTable?: ChatAttachment) {
@@ -278,8 +237,10 @@ function isRedundantReadAction(action: SpreadsheetAgentAction, lastReadRangeTabl
   const requestedSheet = action.sheetName?.trim()
   const requestedRange = action.range?.trim()
 
+  // range가 명시적으로 주어진 경우만 중복 체크
+  // range 없이 전체 시트를 읽으려는 경우는 중복이 아니라 무조건 다시 읽어야 함
   if (!requestedRange) {
-    return !requestedSheet || requestedSheet === parsed.sheetName
+    return false
   }
 
   return normalizeRangeAddress(requestedRange) === normalizeRangeAddress(parsed.range) && (!requestedSheet || requestedSheet === parsed.sheetName)

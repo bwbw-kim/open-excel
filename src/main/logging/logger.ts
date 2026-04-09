@@ -9,11 +9,33 @@ export function createLogger(enabled: boolean): Logger {
     enabled,
     info(message, meta) {
       if (!enabled) return
-      console.info(`[open-excel] ${message}`, meta ?? "")
+      console.info(formatLogLine(message, meta))
     },
     error(message, meta) {
       if (!enabled) return
-      console.error(`[open-excel] ${message}`, meta ?? "")
+      console.error(formatLogLine(message, meta))
     },
+  }
+}
+
+function formatLogLine(message: string, meta?: unknown) {
+  const prefix = `[open-excel] ${message}`
+  const formattedMeta = formatMeta(meta)
+  return formattedMeta ? `${prefix} ${formattedMeta}` : prefix
+}
+
+function formatMeta(meta?: unknown) {
+  if (meta == null || meta === "") {
+    return ""
+  }
+
+  if (typeof meta === "string") {
+    return meta
+  }
+
+  try {
+    return JSON.stringify(meta, null, 0)
+  } catch {
+    return String(meta)
   }
 }
