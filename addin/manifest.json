@@ -1,0 +1,130 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/vDevPreview/MicrosoftTeams.schema.json",
+  "id": "c6a1f8b2-3d4e-5f6a-7b8c-9d0e1f2a3b4c",
+  "version": "1.0.0",
+  "manifestVersion": "devPreview",
+  "name": {
+    "short": "Excel Copilot",
+    "full": "Excel Copilot - AI Spreadsheet Assistant"
+  },
+  "description": {
+    "short": "AI-powered Excel assistant with natural language",
+    "full": "Excel Copilot connects to OpenAI to help you manipulate spreadsheets using natural language. Write cells, manage rows, create sheets, and more with simple commands in Korean or English."
+  },
+  "icons": {
+    "outline": "assets/icon-outline.png",
+    "color": "assets/icon-color.png"
+  },
+  "accentColor": "#2c2a27",
+  "developer": {
+    "name": "bwbw-kim",
+    "websiteUrl": "https://github.com/bwbw-kim/open-excel",
+    "privacyUrl": "https://github.com/bwbw-kim/open-excel/blob/main/PRIVACY.md",
+    "termsOfUseUrl": "https://github.com/bwbw-kim/open-excel/blob/main/TERMS.md"
+  },
+  "localizationInfo": {
+    "defaultLanguageTag": "ko-kr",
+    "additionalLanguages": [
+      {
+        "languageTag": "en-us",
+        "file": "locales/en-us.json"
+      }
+    ]
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "Workbook.ReadWrite.All",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "extensions": [
+    {
+      "requirements": {
+        "scopes": ["workbook"],
+        "capabilities": [
+          {
+            "name": "Workbook",
+            "minVersion": "1.1"
+          }
+        ]
+      },
+      "runtimes": [
+        {
+          "id": "TaskPaneRuntime",
+          "type": "general",
+          "code": {
+            "page": "https://localhost:3000/taskpane.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowTaskpane",
+              "type": "openPage",
+              "view": "dashboard"
+            }
+          ]
+        }
+      ],
+      "ribbons": [
+        {
+          "contexts": ["default"],
+          "tabs": [
+            {
+              "builtInTabId": "TabHome",
+              "groups": [
+                {
+                  "id": "ExcelCopilotGroup",
+                  "label": "Excel Copilot",
+                  "icons": [
+                    {
+                      "size": 16,
+                      "url": "https://localhost:3000/assets/icon-16.png"
+                    },
+                    {
+                      "size": 32,
+                      "url": "https://localhost:3000/assets/icon-32.png"
+                    },
+                    {
+                      "size": 80,
+                      "url": "https://localhost:3000/assets/icon-80.png"
+                    }
+                  ],
+                  "controls": [
+                    {
+                      "id": "TaskpaneButton",
+                      "type": "button",
+                      "label": "Open Copilot",
+                      "icons": [
+                        {
+                          "size": 16,
+                          "url": "https://localhost:3000/assets/icon-16.png"
+                        },
+                        {
+                          "size": 32,
+                          "url": "https://localhost:3000/assets/icon-32.png"
+                        },
+                        {
+                          "size": 80,
+                          "url": "https://localhost:3000/assets/icon-80.png"
+                        }
+                      ],
+                      "supertip": {
+                        "title": "Excel Copilot",
+                        "description": "Open AI assistant to manipulate your spreadsheet with natural language"
+                      },
+                      "actionId": "ShowTaskpane"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
