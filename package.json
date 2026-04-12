@@ -10,6 +10,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
+    "server": "node server/index.js",
+    "addin": "npm run build && npm run server",
     "dist:win": "npm run build && electron-builder --win nsis",
     "dist:win:dir": "npm run build && electron-builder --win dir"
   },
